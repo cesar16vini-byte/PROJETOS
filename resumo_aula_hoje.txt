@@ -1,0 +1,222 @@
+================================================================================
+PROJETO DESTINO - RESUMO DA AULA DE HOJE E PLANO PARA AMANHA
+================================================================================
+Data: 21 de novembro de 2026
+Local: C:\Users\Cesar\Documents\Projetos\DESTINO
+Aluno: Cesar (iniciante em IA, Windows 11, VS Code)
+
+================================================================================
+1. O QUE FOI FEITO HOJE
+================================================================================
+
+Hoje voce reconstruiu do zero o assistente local DESTINO, separando as
+responsabilidades em dois arquivos e adicionando a memoria da conversa.
+
+Foram criados/ajustados estes arquivos:
+
+- voz.py      -> cuida apenas de audio (falar e ouvir)
+- destino.py  -> cuida da conversa com a IA local (Ollama) e do loop principal
+
+O que o DESTINO faz agora:
+1. Ouve o que voce diz pelo microfone (STT - Speech To Text)
+2. Envia o texto para o modelo local phi3 rodando no Ollama
+3. Lembra das ultimas mensagens trocadas (memoria curta)
+4. Responde em voz alta (TTS - Text To Speech)
+5. Repete ate voce dizer "sair"
+
+Tudo roda no seu computador. Nada e enviado para a nuvem, exceto o audio
+que vai para o Google Speech Recognition (precisa de internet para ouvir).
+
+================================================================================
+2. EXPLICACAO DETALHADA DO CODIGO
+================================================================================
+
+----------------------------------------------------
+2.1 ARQUIVO: voz.py
+----------------------------------------------------
+
+Este arquivo so lida com audio. Ele nao sabe nada do Ollama nem de conversa.
+
+engine = pyttsx3.init()
+   Inicializa o mecanismo de fala do Windows (SAPI). Funfante offline.
+
+engine.setProperty("rate", 150)
+   Define a velocidade da fala em palavras por minuto. 150 e mais pausado.
+
+engine.setProperty("volume", 1.0)
+   Define o volume no maximo (1.0 = 100%).
+
+recognizer = sr.Recognizer()
+   Cria o objeto que escuta o microfone e reconhece fala.
+
+def configure_destino_voice():
+   Tenta escolher uma voz masculina instalada no Windows (ex: Microsoft David).
+   Se nao encontrar nenhuma masculina, deixa a voz padrao do sistema.
+
+configure_destino_voice()
+   Executa a configuracao de voz assim que o arquivo e importado.
+
+def speak(text):
+   Faz o computador falar o texto em voz alta.
+   Imprime "DESTINO: <texto>" no terminal e fala pelos alto-falantes.
+   engine.runAndWait() espera terminar de falar antes de continuar o programa.
+
+def listen():
+   Escuta o microfone por ate 8 segundos.
+   Ajusta o microfone ao barulho do ambiente antes de gravar.
+   Envia o audio para o Google Speech Recognition (em portugues do Brasil).
+   Retorna o texto reconhecido, ou uma string vazia se nao entender.
+
+----------------------------------------------------
+2.2 ARQUIVO: destino.py
+----------------------------------------------------
+
+Este arquivo importa voz.py e usa as funcoes voz.speak() e voz.listen().
+
+URL = "http://localhost:11434/api/generate"
+   Endereco onde o Ollama esta rodando no seu proprio computador.
+
+MODEL_NAME = "phi3"
+   Nome do modelo de IA local que vai responder. Fica no topo para ser facil
+   de trocar depois (por exemplo, para "qwen3:0.6b").
+
+MAX_HISTORY = 6
+   Numero maximo de mensagens que o DESTINO lembra da conversa.
+   Evita que o historico cresça para sempre e deixe o Ollama lento.
+
+conversation_history = []
+   Lista vazia que guarda tudo o que foi dito ate agora.
+
+while True:
+   Loop principal. Rode para sempre ate voce dizer "sair".
+
+   user_message = voz.listen()
+   Ouve o microfone e guarda o que voce disse.
+
+   if not user_message:
+      continue
+   Se nao entendeu nada, pula para o proximo ciclo e tenta ouvir de novo.
+
+   if user_message.lower() == "sair":
+      voz.speak("Até logo!")
+      break
+   Se voce disser "sair", o programa se despede e encerra.
+
+   conversation_history.append(user_message)
+   Guarda sua mensagem na lista de memoria.
+
+   if len(conversation_history) > MAX_HISTORY:
+       conversation_history = conversation_history[-MAX_HISTORY:]
+   Se a lista passou do limite (6), mantem so as ultimas 6 mensagens.
+
+   full_prompt = "\n".join(conversation_history)
+   Une todo o historico em um unico texto, separado por linha.
+
+   payload = {
+       "model": MODEL_NAME,
+       "prompt": full_prompt,
+       "stream": False
+   }
+   Monta o pacote JSON que o Ollama espera receber.
+
+   response = requests.post(URL, json=payload, timeout=60)
+   Envia o texto para o Ollama e espera ate 60 segundos por uma resposta.
+
+   if response.status_code == 200:
+       Se o Ollama respondeu com sucesso (codigo 200 = OK).
+
+       result = response.json()
+       ai_text = result.get("response", "Sem resposta")
+       Extrai so o texto da resposta dentro da chave "response".
+
+       conversation_history.append(ai_text)
+       Guarda a resposta do DESTINO na memoria tambem.
+
+       voz.speak(ai_text)
+       O DESTINO fala a resposta em voz alta.
+   else:
+       Se deu erro, avisa e imprime o codigo de erro.
+
+================================================================================
+3. COMO EXECUTAR O PROJETO
+================================================================================
+
+1. Abra o VS Code na pasta C:\Users\Cesar\Documents\Projetos\DESTINO
+2. Abra o terminal do VS Code (Terminal > New Terminal)
+3. Confirme que o Ollama esta rodando em outro terminal com:
+      ollama list
+   (deve aparecer phi3:latest e qwen3:0.6b)
+4. Rode o assistente:
+      python destino.py
+5. Fale algo pelo microfone. O DESTINO vai responder em voz alta.
+6. Para encerrar, diga "sair" ou aperte Ctrl+C no terminal.
+
+Requisitos para funcionar:
+- Python 3.13 instalado
+- Bibliotecas: pyttsx3, SpeechRecognition, requests (ja instaladas)
+- Ollama rodando localmente em http://localhost:11434
+- Microfone funcionando (para ouvir voce)
+- Internet (apenas para a parte de ouvir/STT; falar e IA rodam offline)
+
+================================================================================
+4. PLANO PARA A AULA DE AMANHA (PRÓXIMOS PASSOS)
+================================================================================
+
+Voce ja concluiu praticamente o Mês 1 e o Mês 2 do seu plano de 3 meses:
+- Parte 1 (assistente de terminal com voz) esta funcionando.
+
+Sugestao para a aula de amanha:
+
+----------------------------------------------------
+OPCAO A: LIMITAR E MELHORAR A MEMORIA (recomendado)
+----------------------------------------------------
+
+O historico atual guarda so as ultimas 6 mensagens. Amanha voce pode:
+1. Testar se 6 eh suficiente ou se precisa de mais (ex: 10 ou 20).
+2. Descobrir o que acontece quando o historico fica muito grande (o Ollama pode
+   demorar mais ou esquecer o começo da conversa).
+3. Tentar enviar so as ultimas 3 trocas (pergunta + resposta) em vez de tudo.
+
+----------------------------------------------------
+OPCAO B: COMECAR A INTERFACE (Parte 2 do plano de 3 meses)
+----------------------------------------------------
+
+Seu plano prevê para o Mês 3 criar uma interface interativa. Amanha voce pode
+escolher uma dessas bibliotecas e criar uma janela simples:
+
+- Streamlit: mais facil para iniciante, cria uma pagina web no navegador.
+  Ex: um botao "Ouvir", um texto que mostra o que voce disse, outro que mostra
+  a resposta do DESTINO.
+
+- Textual: cria uma interface moderna dentro do proprio terminal (com cores).
+
+Desafio para amanha: instalar streamlit (pip install streamlit) e criar um
+arquivo app.py que chame as funcoes de voz.py e destino.py.
+
+----------------------------------------------------
+OPCAO C: ADICIONAR COMANDOS LOCAIS (sem precisar do Ollama para tudo)
+----------------------------------------------------
+
+Fazer o DESTINO responder sozinho a coisas simples, sem enviar para a IA:
+- "Que horas são?" -> o Python responde a hora atual.
+- "Abra o bloco de notas" -> o Python abre o Bloco de Notas do Windows.
+- "Qual é a minha área de trabalho?" -> mostra o caminho da pasta.
+
+Isso ensina a diferenciar "inteligência geral" (Ollama) de "funções fixas"
+(Python).
+
+================================================================================
+5. OBSERVACOES IMPORTANTES
+================================================================================
+
+- Todo o codigo usa nomes de variavel e funcoes em ingles (ex: MODEL_NAME,
+  user_message, payload, response). Isso e uma boa pratica de programacao.
+- Os comentarios e as mensagens que aparecem para o usuario estao em portugues.
+- O STT (ouvir) usa o Google Speech Recognition, entao precisa de internet.
+- O TTS (falar) e a IA (Ollama com phi3) funcionam 100% offline.
+- O projeto ainda nao e um repositorio git. Quando quiser subir para o
+  GitHub, rode: git init, git add ., git commit, git remote add origin, git push.
+
+================================================================================
+FIM DO RESUMO
+================================================================================
