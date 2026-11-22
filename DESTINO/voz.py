@@ -1,30 +1,72 @@
 import speech_recognition as sr
-import pyttsx3
-
-engine = pyttsx3.init()
-engine.setProperty("rate", 150)
-engine.setProperty("volume", 1.0)
+import subprocess
+import sys
 
 recognizer = sr.Recognizer()
 
-def configure_destino_voice():
-    voices = engine.getProperty("voices")
-    for voice in voices:
-        name = (voice.name or "").lower()
-        if any(word in name for word in ("david", "mark", "male", "masculino")):
-            engine.setProperty("voice", voice.id)
-            print(f"Voz selecionada: {voice.name}")
-            return
-    print("Nenhuma voz masculina encontrada; usando a voz padrão do sistema.")
 
-configure_destino_voice()
+def _falar_powershell(texto):
+    """Fala via PowerShell usando System.Speech.Synthesis do .NET (Windows nativo)."""
+    ps_script = f'''
+Add-Type -AssemblyName System.Speech
+$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$synth.SetOutputToDefaultAudioDevice()
+$synth.Volume = 100
+$synth.Rate = 0
+try {{
+    $synth.Speak("{texto}")
+}} catch {{
+    Write-Error "Erro ao falar: $($_.Exception.Message)"
+}}
+$synth.Dispose()
+'''
+    try:
+        resultado = subprocess.run(
+            ["powershell", "-Command", ps_script],
+            capture_output=True, text=True, timeout=30
+        )
+        if resultado.returncode == 0:
+            return True
+        else:
+            print(f"[ERRO DE ÁUDIO] PowerShell falhou: {resultado.stderr[:200]}")
+            return False
+    except Exception as e:
+        print(f"[ERRO DE ÁUDIO] Exceção no PowerShell: {e}")
+        return False
+
+
+def _falar_win32com(texto):
+    """Fala via win32com.client (SAPI.SpVoice) como fallback."""
+    try:
+        import pythoncom
+        import win32com.client
+
+        pythoncom.CoInitialize()
+        voice = win32com.client.Dispatch("SAPI.SpVoice")
+        voice.Volume = 100
+        voice.Rate = 0
+        voice.Speak(texto)
+        return True
+    except Exception as e:
+        print(f"[ERRO DE ÁUDIO] win32com falhou: {e}")
+        return False
+
 
 def speak(text):
     if not text:
         return
     print("DESTINO:", text)
-    engine.say(text)
-    engine.runAndWait()
+
+    # Tenta PowerShell primeiro (mais confiável no Windows)
+    if _falar_powershell(text):
+        return
+
+    # Fallback: win32com
+    if _falar_win32com(text):
+        return
+
+    print("[ERRO DE ÁUDIO] Não consegui falar por nenhum método disponível.")
+
 
 def listen():
     try:
